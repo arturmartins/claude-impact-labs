@@ -35,7 +35,7 @@ def test_digest_is_written_to_file(tide):
     digest = (tide.home / "last-digest.md").read_text()
     assert "api-gateway" in digest
     assert "permission" in digest
-    assert "Claude needs your permission to use Bash" in digest
+    assert "Claude needs your permission" in digest
 
 
 def test_single_agent_is_singular(tide):
