@@ -22,10 +22,10 @@ Your agents keep working. When one needs you, Tide holds the notification. Every
 
 ```
 Tide
-1 agent waiting: claude-impact-labs (idle)
+1 agent waiting: claude-impact-labs (permission)
 ```
 
-That is the notification from a real run on the author's Mac. Two events recorded from a real Claude Code session (a permission prompt, then an idle prompt) went through the installed hook. Tide kept the newest one for the session and sent a single digest. `~/.tide/last-digest.md` holds the same digest with each message and the time it was queued.
+That is a live digest from the author's Mac. A real Claude Code session raised a permission prompt, Tide held it, and a flush sent it as one notification once the prompt had been waiting. Two other queued items from sessions that had moved on were dropped, not sent. `~/.tide/last-digest.md` holds the same digest with each message and the time it was queued.
 
 Anything you already answered before the digest is dropped, so it never sends you to a session that has moved on.
 
@@ -46,10 +46,10 @@ Anything you already answered before the digest is dropped, so it never sends yo
 ```
 $ python3 ~/.tide/tide.py status
 0 queued
-today: 2 caught, 1 digest
+today: 11 caught, 2 digests
 ```
 
-Two notifications caught, one digest sent. These are the counts from that run, read from `~/.tide/log.jsonl`.
+11 notifications caught and 2 digests sent. One of the two digests was sent early on from two recorded events replayed through the installed hook; the other is the live one above. These counts, and the 3 items dropped as already handled, come from `~/.tide/log.jsonl`.
 
 ## Configure
 
