@@ -17,9 +17,13 @@ import shutil
 import subprocess
 import sys
 import time
-import tomllib
 import traceback
 from pathlib import Path
+
+try:
+    import tomllib
+except ImportError:  # Python < 3.11: the hook must still exit 0, so run on defaults
+    tomllib = None
 
 DEFAULT_BATCH_TYPES = [
     "idle_prompt",
@@ -46,6 +50,8 @@ def log_error(message: str) -> None:
 
 def load_config() -> dict:
     config = {"interval_minutes": 30, "batch_types": list(DEFAULT_BATCH_TYPES)}
+    if tomllib is None:
+        return config
     try:
         with open(tide_home() / "config.toml", "rb") as f:
             config.update(tomllib.load(f))
@@ -269,7 +275,7 @@ def install_schedule(interval: int) -> str:
         calendar = [{k: v for k, v in (("Hour", h), ("Minute", m)) if not (k == "Hour" and v is None)} for h, m in pairs]
         plist = {
             "Label": PLIST_LABEL,
-            "ProgramArguments": ["/usr/bin/env", "python3", str(script), "flush"],
+            "ProgramArguments": [sys.executable, str(script), "flush"],
             "StartCalendarInterval": calendar,
             "StandardErrorPath": str(tide_home() / "launchd.err"),
         }
