@@ -177,8 +177,35 @@ def cmd_flush(args: argparse.Namespace) -> int:
     return 0
 
 
+def read_jsonl(path: Path) -> list[dict]:
+    try:
+        lines = path.read_text().splitlines()
+    except FileNotFoundError:
+        return []
+    records = []
+    for line in lines:
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(record, dict):
+            records.append(record)
+    return records
+
+
 def cmd_status(args: argparse.Namespace) -> int:
-    raise NotImplementedError("status")
+    home = tide_home()
+    queued = len(read_jsonl(home / "queue.jsonl"))
+    today = time.localtime()[:3]
+    events = [
+        e.get("event")
+        for e in read_jsonl(home / "log.jsonl")
+        if isinstance(e.get("ts"), (int, float)) and time.localtime(e["ts"])[:3] == today
+    ]
+    caught, digests = events.count("caught"), events.count("digest")
+    print(f"{queued} queued")
+    print(f"today: {caught} caught, {digests} digest{'s' if digests != 1 else ''}")
+    return 0
 
 
 def cmd_install(args: argparse.Namespace) -> int:
