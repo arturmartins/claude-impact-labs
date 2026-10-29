@@ -1,0 +1,9 @@
+{
+  "session_id": "00000000-0000-4000-8000-000000000002",
+  "transcript_path": "/replaced/by/tests/transcript.jsonl",
+  "cwd": "/replaced/by/tests/project",
+  "permission_mode": "default",
+  "hook_event_name": "Notification",
+  "message": "Claude is waiting for your input",
+  "notification_type": "idle_prompt"
+}
