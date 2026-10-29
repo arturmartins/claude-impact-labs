@@ -103,8 +103,78 @@ def cmd_hook(args: argparse.Namespace) -> int:
     return 0
 
 
+REASONS = {
+    "permission_prompt": "permission",
+    "idle_prompt": "idle",
+    "agent_completed": "finished",
+    "agent_needs_input": "needs input",
+    "elicitation_dialog": "form",
+}
+STALE_AFTER = 2.0
+
+
+def take_queue() -> list[dict]:
+    """Read and empty the queue under an exclusive lock, so no hook line is lost or read twice."""
+    path = tide_home() / "queue.jsonl"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    items = []
+    with open(path, "a+") as f:
+        fcntl.flock(f, fcntl.LOCK_EX)
+        f.seek(0)
+        for line in f.read().splitlines():
+            try:
+                item = json.loads(line)
+            except json.JSONDecodeError:
+                log_error(f"skipped bad queue line: {line[:200]}")
+                continue
+            if isinstance(item, dict):
+                items.append(item)
+        f.truncate(0)
+    return items
+
+
+def is_stale(item: dict) -> bool:
+    try:
+        modified = os.stat(item["transcript_path"]).st_mtime
+    except (KeyError, TypeError, OSError):
+        return False
+    return modified - float(item.get("queued_at", 0)) > STALE_AFTER
+
+
+def digest_line(item: dict) -> str:
+    folder = os.path.basename(str(item.get("cwd") or "").rstrip("/")) or "unknown"
+    ntype = item.get("notification_type")
+    return f"{folder} ({REASONS.get(ntype, ntype)})"
+
+
 def cmd_flush(args: argparse.Namespace) -> int:
-    raise NotImplementedError("flush")
+    newest: dict[str, dict] = {}
+    for item in take_queue():
+        key = str(item.get("session_id"))
+        if key not in newest or item.get("queued_at", 0) >= newest[key].get("queued_at", 0):
+            newest[key] = item
+
+    kept = []
+    for item in newest.values():
+        if is_stale(item):
+            log_event("dropped", session_id=item.get("session_id"), notification_type=item.get("notification_type"))
+        else:
+            kept.append(item)
+    if not kept:
+        return 0
+
+    kept.sort(key=lambda i: i.get("queued_at", 0), reverse=True)
+    n = len(kept)
+    body = f"{n} agent{'s' if n != 1 else ''} waiting: " + ", ".join(digest_line(i) for i in kept)
+    lines = [f"# Tide digest, {time.strftime('%Y-%m-%d %H:%M')}", ""]
+    for item in kept:
+        queued = time.strftime("%H:%M:%S", time.localtime(item.get("queued_at", 0)))
+        lines.append(f"- **{digest_line(item)}**: {item.get('message', '')} (queued {queued})")
+    (tide_home() / "last-digest.md").write_text("\n".join(lines) + "\n")
+
+    deliver("Tide", body)
+    log_event("digest", count=n)
+    return 0
 
 
 def cmd_status(args: argparse.Namespace) -> int:
