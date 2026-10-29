@@ -35,7 +35,10 @@ Config is optional, `$TIDE_HOME/config.toml`, read with `tomllib`:
 ```toml
 interval_minutes = 30
 batch_types = ["idle_prompt", "permission_prompt", "agent_needs_input", "agent_completed", "elicitation_dialog"]
+quiet_hours = ["22:00", "08:00"]  # optional, local time, may cross midnight
 ```
+
+**Quiet hours.** While the local time is inside `quiet_hours` (start inclusive, end exclusive), `tide.py flush` does nothing and leaves the queue as it is, so items wait for the first flush after the window. `tide.py now` ignores quiet hours, because it is an explicit request. Types outside `batch_types` are still delivered at once by the hook. A bad `quiet_hours` value is logged to `error.log` and ignored.
 
 **Tide's hook entry** is any hook whose `command` contains `tide.py hook`. `install` and `uninstall` find it that way.
 

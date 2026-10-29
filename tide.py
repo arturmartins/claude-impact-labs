@@ -165,7 +165,26 @@ def digest_lines(items: list[dict]) -> list[str]:
     return lines
 
 
+def in_quiet_hours(config: dict, now: float | None = None) -> bool:
+    """True when the local time falls in config['quiet_hours'] = ["HH:MM", "HH:MM"]; the window may cross midnight."""
+    window = config.get("quiet_hours")
+    if not window:
+        return False
+    try:
+        start, end = (int(h) * 60 + int(m) for h, m in (s.split(":") for s in window))
+    except (ValueError, TypeError):
+        log_error(f"bad quiet_hours {window!r}, expected [\"HH:MM\", \"HH:MM\"]; ignoring")
+        return False
+    local = time.localtime(now if now is not None else time.time())
+    minute = local.tm_hour * 60 + local.tm_min
+    if start == end:
+        return False
+    return start <= minute < end if start < end else minute >= start or minute < end
+
+
 def cmd_flush(args: argparse.Namespace) -> int:
+    if args.command == "flush" and in_quiet_hours(load_config()):
+        return 0  # the queue waits; `now` is an explicit request and skips this check
     newest: dict[str, dict] = {}
     for item in take_queue():
         key = str(item.get("session_id"))

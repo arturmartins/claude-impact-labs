@@ -129,3 +129,62 @@ def test_sessions_in_the_same_folder_get_a_session_suffix(tide):
     assert "other (idle)" in body
     digest = (tide.home / "last-digest.md").read_text()
     assert "proj#aaaa (permission)" in digest
+
+
+def hhmm(offset_minutes: int) -> str:
+    import time
+    t = time.localtime(time.time() + offset_minutes * 60)
+    return f"{t.tm_hour:02d}:{t.tm_min:02d}"
+
+
+def test_flush_waits_during_quiet_hours(tide):
+    tide.write_config(f'quiet_hours = ["{hhmm(-60)}", "{hhmm(60)}"]\n')
+    tide.hook(tide.event("idle_prompt", session="a"))
+
+    result = tide.run("flush")
+
+    assert result.returncode == 0, result.stderr
+    assert tide.notifications() == []
+    assert [q["session_id"] for q in tide.queue()] == ["a"]
+    assert "digest" not in [e["event"] for e in tide.log()]
+
+
+def test_quiet_hours_can_cross_midnight(tide):
+    tide.write_config(f'quiet_hours = ["{hhmm(-60)}", "{hhmm(-120)}"]\n')  # start later than end: 23 hours, wrapping past midnight
+    tide.hook(tide.event("idle_prompt"))
+
+    tide.run("flush")
+
+    assert tide.notifications() == []
+    assert len(tide.queue()) == 1
+
+
+def test_flush_runs_outside_quiet_hours(tide):
+    tide.write_config(f'quiet_hours = ["{hhmm(60)}", "{hhmm(120)}"]\n')
+    tide.hook(tide.event("idle_prompt"))
+
+    tide.run("flush")
+
+    assert len(tide.notifications()) == 1
+    assert tide.queue() == []
+
+
+def test_now_ignores_quiet_hours(tide):
+    tide.write_config(f'quiet_hours = ["{hhmm(-60)}", "{hhmm(60)}"]\n')
+    tide.hook(tide.event("idle_prompt"))
+
+    tide.run("now")
+
+    assert len(tide.notifications()) == 1
+    assert tide.queue() == []
+
+
+def test_bad_quiet_hours_are_ignored(tide):
+    tide.write_config('quiet_hours = ["late", "early"]\n')
+    tide.hook(tide.event("idle_prompt"))
+
+    result = tide.run("flush")
+
+    assert result.returncode == 0, result.stderr
+    assert len(tide.notifications()) == 1
+    assert "quiet_hours" in (tide.home / "error.log").read_text()

@@ -62,6 +62,8 @@ batch_types = ["idle_prompt", "permission_prompt", "agent_needs_input", "agent_c
 
 Types not listed are delivered straight away.
 
+To hold digests overnight, add `quiet_hours = ["22:00", "08:00"]` (local time, start inclusive, end exclusive, may cross midnight). The scheduled flush then does nothing in that window and the queue waits for the first flush after it; anything you handled in the meantime is dropped as usual. `tide.py now` ignores quiet hours, and types not in `batch_types` are still delivered at once.
+
 ## Limits
 
 - **Agents can wait up to one interval for you.** That is the point, but if a stalled permission prompt costs you more than the interruption, remove `permission_prompt` from `batch_types`.
