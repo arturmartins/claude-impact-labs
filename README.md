@@ -1,6 +1,6 @@
 # Tide
 
-[![tests](https://github.com/OWNER/tide/actions/workflows/test.yml/badge.svg)](https://github.com/OWNER/tide/actions/workflows/test.yml)
+[![tests](https://github.com/arturmartins/claude-impact-labs/actions/workflows/test.yml/badge.svg)](https://github.com/arturmartins/claude-impact-labs/actions/workflows/test.yml)
 
 Tide batches Claude Code notifications into one digest every 30 minutes. For developers running several agents at once.
 
@@ -11,7 +11,7 @@ Tide batches Claude Code notifications into one digest every 30 minutes. For dev
 Requires Python 3.11+ on macOS or Linux. No accounts, no API keys, no dependencies.
 
 ```bash
-git clone https://github.com/OWNER/tide && cd tide && ./install.sh
+git clone https://github.com/arturmartins/claude-impact-labs && cd claude-impact-labs && ./install.sh
 ```
 
 This adds one Notification hook to `~/.claude/settings.json` (backed up first) and schedules a flush at :00 and :30.
@@ -21,8 +21,11 @@ This adds one Notification hook to `~/.claude/settings.json` (backed up first) a
 Your agents keep working. When one needs you, Tide holds the notification. Every 30 minutes you get one notification instead:
 
 ```
-TODO(real-run): paste a real digest here
+Tide
+1 agent waiting: claude-impact-labs (idle)
 ```
+
+That is the notification from a real run on the author's Mac. Two events recorded from a real Claude Code session (a permission prompt, then an idle prompt) went through the installed hook. Tide kept the newest one for the session and sent a single digest. `~/.tide/last-digest.md` holds the same digest with each message and the time it was queued.
 
 Anything you already answered before the digest is dropped, so it never sends you to a session that has moved on.
 
@@ -41,8 +44,12 @@ Anything you already answered before the digest is dropped, so it never sends yo
 - Measured from its own log on our machine tonight:
 
 ```
-TODO(real-run): paste real `tide.py status` output here
+$ python3 ~/.tide/tide.py status
+0 queued
+today: 2 caught, 1 digest
 ```
+
+Two notifications caught, one digest sent. These are the counts from that run, read from `~/.tide/log.jsonl`.
 
 ## Configure
 
@@ -68,7 +75,7 @@ Types not listed are delivered straight away.
 pytest -q
 ```
 
-CI runs them on Ubuntu and macOS. Test fixtures in `tests/fixtures/` are hook JSON recorded from real Claude Code sessions.
+CI runs them on Ubuntu and macOS. The `permission_prompt` and `idle_prompt` fixtures in `tests/fixtures/` are hook JSON recorded from a real Claude Code session; `auth_success` is synthetic (see `tests/fixtures/README.md`).
 
 ## Spec
 
