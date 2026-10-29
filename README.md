@@ -65,8 +65,8 @@ Types not listed are delivered straight away.
 ## Limits
 
 - **Agents can wait up to one interval for you.** That is the point, but if a stalled permission prompt costs you more than the interruption, remove `permission_prompt` from `batch_types`.
-- Claude Code's own built-in notification, and any other Notification hooks you have, still run. `install` lists the other hooks it finds.
-- macOS: `osascript` needs Script Editor to have notification permission. Linux: needs `notify-send`. The digest is always written to `~/.tide/last-digest.md` too.
+- Claude Code's own built-in notification, and any other Notification hooks you have, still run. `install` lists the other hooks it finds. To turn the built-in one off, set `"preferredNotifChannel": "notifications_disabled"` in `~/.claude/settings.json` ([settings reference](https://code.claude.com/docs/en/settings-reference#preferrednotifchannel)). By default Claude Code sends its own desktop notification in iTerm2, Ghostty and Kitty. Tide does not change this setting for you.
+- macOS: `osascript` sends notifications through the built-in Script Editor app. Without notification permission the command fails silently, and macOS does not prompt for it, so Tide cannot tell that the digest did not show. Run `osascript -e 'display notification "test"'` once, then open System Settings > Notifications, find Script Editor and turn on Allow Notifications ([Claude Code hooks guide](https://code.claude.com/docs/en/hooks-guide#get-notified-when-claude-needs-input)). Linux: needs `notify-send` and a notification daemon. The digest is always written to `~/.tide/last-digest.md` too.
 - No Windows support yet.
 
 ## Tests

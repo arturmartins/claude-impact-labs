@@ -66,7 +66,7 @@ See `CLAUDE.md` for the exact CLI contract the code must meet.
 | Risk | Mitigation |
 | --- | --- |
 | A batched permission prompt stalls an agent for up to 30 minutes | Documented; `permission_prompt` can be removed from `batch_types`; `tide now` |
-| Claude Code's built-in notification still fires | Open question: document the setting for the installed version |
+| Claude Code's built-in notification still fires | Documented in the README: `preferredNotifChannel` = `notifications_disabled`. Not changed by `install` |
 | Other Notification hooks still send popups | `install` lists them |
 | Install breaks `settings.json` | Back up first, merge with `json`, test covers it |
 | No notifier available | `last-digest.md` always written |
