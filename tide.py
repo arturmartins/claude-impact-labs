@@ -10,6 +10,8 @@ import argparse
 import fcntl
 import json
 import os
+import plistlib
+import re
 import shlex
 import shutil
 import subprocess
@@ -208,12 +210,177 @@ def cmd_status(args: argparse.Namespace) -> int:
     return 0
 
 
+HOOK_MARKER = re.compile(r"tide\.py['\"]? hook")
+PLIST_LABEL = "ai.tide.flush"
+CRON_TAG = "# tide"
+
+
+def settings_path() -> Path:
+    return Path(os.environ.get("TIDE_CLAUDE_SETTINGS") or Path.home() / ".claude" / "settings.json")
+
+
+def is_tide_hook(hook: dict) -> bool:
+    return bool(HOOK_MARKER.search(str(hook.get("command", ""))))
+
+
+def load_settings(path: Path) -> dict:
+    if not path.exists():
+        return {}
+    data = json.loads(path.read_text())
+    if not isinstance(data, dict):
+        raise ValueError(f"{path} is not a JSON object")
+    return data
+
+
+def save_settings(path: Path, data: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tide-tmp")
+    tmp.write_text(json.dumps(data, indent=2) + "\n")
+    tmp.replace(path)
+
+
+def notification_hooks(settings: dict) -> list[dict]:
+    groups = settings.get("hooks", {}).get("Notification", [])
+    return [h for g in groups if isinstance(g, dict) for h in g.get("hooks", []) if isinstance(h, dict)]
+
+
+def schedule_times(interval: int) -> tuple[list[tuple[int | None, int]], str]:
+    """(launchd Hour/Minute pairs, cron time fields) for an interval that divides the hour or the day."""
+    if interval < 60 and 60 % interval == 0:
+        return [(None, m) for m in range(0, 60, interval)], f"*/{interval} * * * *"
+    if interval % 60 == 0 and 24 % (interval // 60) == 0:
+        step = interval // 60
+        return [(h, 0) for h in range(0, 24, step)], f"0 */{step} * * *"
+    raise ValueError(f"interval_minutes = {interval} must divide an hour or a day evenly")
+
+
+def plist_path() -> Path:
+    return Path.home() / "Library" / "LaunchAgents" / f"{PLIST_LABEL}.plist"
+
+
+def launchctl(*args: str) -> subprocess.CompletedProcess:
+    return subprocess.run(["launchctl", *args], capture_output=True, text=True)
+
+
+def install_schedule(interval: int) -> str:
+    pairs, cron_time = schedule_times(interval)
+    script = tide_home() / "tide.py"
+    if sys.platform == "darwin":
+        calendar = [{k: v for k, v in (("Hour", h), ("Minute", m)) if not (k == "Hour" and v is None)} for h, m in pairs]
+        plist = {
+            "Label": PLIST_LABEL,
+            "ProgramArguments": ["/usr/bin/env", "python3", str(script), "flush"],
+            "StartCalendarInterval": calendar,
+            "StandardErrorPath": str(tide_home() / "launchd.err"),
+        }
+        path = plist_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        launchctl("bootout", f"gui/{os.getuid()}", str(path))  # makes re-install idempotent
+        with open(path, "wb") as f:
+            plistlib.dump(plist, f)
+        result = launchctl("bootstrap", f"gui/{os.getuid()}", str(path))
+        if result.returncode != 0:
+            return f"wrote {path} but launchctl bootstrap failed: {result.stderr.strip()}"
+        return f"launchd agent {PLIST_LABEL} loaded, every {interval} min"
+    existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    lines = [ln for ln in existing.stdout.splitlines() if not ln.rstrip().endswith(CRON_TAG)]
+    lines.append(f"{cron_time} python3 {script} flush {CRON_TAG}")
+    subprocess.run(["crontab", "-"], input="\n".join(lines) + "\n", text=True, check=True)
+    return f"crontab entry added, every {interval} min"
+
+
+def uninstall_schedule() -> str:
+    if sys.platform == "darwin":
+        path = plist_path()
+        launchctl("bootout", f"gui/{os.getuid()}", str(path))
+        if path.exists():
+            path.unlink()
+            return f"removed launchd agent {PLIST_LABEL}"
+        return "no launchd agent to remove"
+    existing = subprocess.run(["crontab", "-l"], capture_output=True, text=True)
+    lines = existing.stdout.splitlines()
+    kept = [ln for ln in lines if not ln.rstrip().endswith(CRON_TAG)]
+    if len(kept) == len(lines):
+        return "no crontab entry to remove"
+    subprocess.run(["crontab", "-"], input="\n".join(kept) + "\n" if kept else "", text=True, check=True)
+    return "removed crontab entry"
+
+
 def cmd_install(args: argparse.Namespace) -> int:
-    raise NotImplementedError("install")
+    home, path = tide_home(), settings_path()
+    try:
+        settings = load_settings(path)
+    except (ValueError, OSError) as e:
+        print(f"tide: cannot read {path}: {e}. Nothing changed.", file=sys.stderr)
+        return 1
+
+    home.mkdir(parents=True, exist_ok=True)
+    target = home / "tide.py"
+    if Path(__file__).resolve() != target.resolve():
+        shutil.copy2(__file__, target)
+    command = f"python3 {target} hook"
+
+    others = [h.get("command", "") for h in notification_hooks(settings) if not is_tide_hook(h)]
+    groups = settings.setdefault("hooks", {}).setdefault("Notification", [])
+    ours = [h for g in groups if isinstance(g, dict) for h in g.get("hooks", []) if isinstance(h, dict) and is_tide_hook(h)]
+    if ours:
+        changed = any(h.get("command") != command for h in ours)
+        for h in ours:
+            h["command"] = command
+    else:
+        groups.append({"matcher": "", "hooks": [{"type": "command", "command": command}]})
+        changed = True
+    if changed:
+        if path.exists():
+            shutil.copy2(path, path.with_name(path.name + ".tide-backup"))
+        save_settings(path, settings)
+    print(f"Hook {'updated' if ours else 'added'} in {path}: {command}")
+    for other in others:
+        print(f"Other Notification hook still active: {other}")
+
+    if os.environ.get("TIDE_NO_SCHEDULE") == "1":
+        print("Schedule skipped (TIDE_NO_SCHEDULE=1)")
+        return 0
+    try:
+        print(install_schedule(int(load_config()["interval_minutes"])))
+    except Exception as e:
+        print(f"tide: hook installed but the schedule was not: {e}", file=sys.stderr)
+        return 1
+    return 0
 
 
 def cmd_uninstall(args: argparse.Namespace) -> int:
-    raise NotImplementedError("uninstall")
+    path = settings_path()
+    try:
+        settings = load_settings(path)
+    except (ValueError, OSError) as e:
+        print(f"tide: cannot read {path}: {e}. Nothing changed.", file=sys.stderr)
+        return 1
+
+    groups = settings.get("hooks", {}).get("Notification")
+    if isinstance(groups, list):
+        removed = 0
+        for g in groups:
+            if isinstance(g, dict) and isinstance(g.get("hooks"), list):
+                before = len(g["hooks"])
+                g["hooks"] = [h for h in g["hooks"] if not (isinstance(h, dict) and is_tide_hook(h))]
+                removed += before - len(g["hooks"])
+        if removed:
+            settings["hooks"]["Notification"] = [g for g in groups if not (isinstance(g, dict) and g.get("hooks") == [])]
+            if not settings["hooks"]["Notification"]:
+                del settings["hooks"]["Notification"]
+            if not settings["hooks"]:
+                del settings["hooks"]
+            save_settings(path, settings)
+        print(f"Removed {removed} Tide hook{'s' if removed != 1 else ''} from {path}")
+
+    if os.environ.get("TIDE_NO_SCHEDULE") != "1":
+        try:
+            print(uninstall_schedule())
+        except Exception as e:
+            print(f"tide: schedule not removed: {e}", file=sys.stderr)
+            return 1
+    return 0
 
 
 def main(argv: list[str] | None = None) -> int:
