@@ -114,3 +114,18 @@ def test_items_queued_after_flush_wait_for_next_flush(tide):
     assert [q["session_id"] for q in tide.queue()] == ["b"]
     assert len(tide.notifications()) == 1
     json.dumps(tide.queue())  # still valid JSON lines
+
+
+def test_sessions_in_the_same_folder_get_a_session_suffix(tide):
+    tide.hook(tide.event("permission_prompt", session="aaaa1111", folder="proj"))
+    tide.hook(tide.event("idle_prompt", session="bbbb2222", folder="proj"))
+    tide.hook(tide.event("idle_prompt", session="cccc3333", folder="other"))
+
+    tide.run("flush")
+
+    body = body_of(tide.notifications()[0])
+    assert "proj#aaaa (permission)" in body
+    assert "proj#bbbb (idle)" in body
+    assert "other (idle)" in body
+    digest = (tide.home / "last-digest.md").read_text()
+    assert "proj#aaaa (permission)" in digest

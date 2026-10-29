@@ -149,10 +149,20 @@ def is_stale(item: dict) -> bool:
     return modified - float(item.get("queued_at", 0)) > STALE_AFTER
 
 
-def digest_line(item: dict) -> str:
-    folder = os.path.basename(str(item.get("cwd") or "").rstrip("/")) or "unknown"
-    ntype = item.get("notification_type")
-    return f"{folder} ({REASONS.get(ntype, ntype)})"
+def folder_of(item: dict) -> str:
+    return os.path.basename(str(item.get("cwd") or "").rstrip("/")) or "unknown"
+
+
+def digest_lines(items: list[dict]) -> list[str]:
+    """One 'folder (reason)' per item; sessions sharing a folder get '#<session id prefix>' to tell them apart."""
+    folders = [folder_of(i) for i in items]
+    lines = []
+    for item, folder in zip(items, folders):
+        if folders.count(folder) > 1:
+            folder += "#" + str(item.get("session_id", ""))[:4]
+        ntype = item.get("notification_type")
+        lines.append(f"{folder} ({REASONS.get(ntype, ntype)})")
+    return lines
 
 
 def cmd_flush(args: argparse.Namespace) -> int:
@@ -173,11 +183,12 @@ def cmd_flush(args: argparse.Namespace) -> int:
 
     kept.sort(key=lambda i: i.get("queued_at", 0), reverse=True)
     n = len(kept)
-    body = f"{n} agent{'s' if n != 1 else ''} waiting: " + ", ".join(digest_line(i) for i in kept)
+    labels = digest_lines(kept)
+    body = f"{n} agent{'s' if n != 1 else ''} waiting: " + ", ".join(labels)
     lines = [f"# Tide digest, {time.strftime('%Y-%m-%d %H:%M')}", ""]
-    for item in kept:
+    for item, label in zip(kept, labels):
         queued = time.strftime("%H:%M:%S", time.localtime(item.get("queued_at", 0)))
-        lines.append(f"- **{digest_line(item)}**: {item.get('message', '')} (queued {queued})")
+        lines.append(f"- **{label}**: {item.get('message', '')} (queued {queued})")
     (tide_home() / "last-digest.md").write_text("\n".join(lines) + "\n")
 
     deliver("Tide", body)

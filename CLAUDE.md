@@ -39,7 +39,7 @@ batch_types = ["idle_prompt", "permission_prompt", "agent_needs_input", "agent_c
 
 **Tide's hook entry** is any hook whose `command` contains `tide.py hook`. `install` and `uninstall` find it that way.
 
-**Digest text.** Title `Tide`. Body: `1 agent waiting: <folder> (<reason>)` or `3 agents waiting: <folder> (<reason>), ...`, newest first, where folder is the basename of `cwd` and reason maps `permission_prompt` → permission, `idle_prompt` → idle, `agent_completed` → finished, `agent_needs_input` → needs input, `elicitation_dialog` → form, anything else → the raw type. `last-digest.md` lists each item with folder, reason, message and time queued.
+**Digest text.** Title `Tide`. Body: `1 agent waiting: <folder> (<reason>)` or `3 agents waiting: <folder> (<reason>), ...`, newest first, where folder is the basename of `cwd` and reason maps `permission_prompt` → permission, `idle_prompt` → idle, `agent_completed` → finished, `agent_needs_input` → needs input, `elicitation_dialog` → form, anything else → the raw type. When several items share a folder name, each of those gets `#<first 4 characters of session_id>` after the folder, e.g. `proj#ab12 (idle)`. `last-digest.md` lists each item with folder, reason, message and time queued.
 
 **Schedule.** macOS: a launchd agent `~/Library/LaunchAgents/ai.tide.flush.plist` with `StartCalendarInterval` at minutes 0 and 30. Linux: one user crontab line `*/30 * * * * python3 <TIDE_HOME>/tide.py flush # tide`. Derive the minutes from `interval_minutes`.
 
